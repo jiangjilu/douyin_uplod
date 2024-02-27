@@ -9,6 +9,7 @@
 - 注意：只提供昵称的@并不准确，加抖音号才能完全准确
 
 ```shell
+#经过测试，使用 python3.11 版本运行正常
 pip install -r requirements.txt -i https://mirrors.bfsu.edu.cn/pypi/web/simple/
 playwright install chromium
 python main.py
