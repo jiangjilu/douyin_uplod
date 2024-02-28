@@ -14,16 +14,16 @@ from datetime import datetime
 
 class Config(BaseModel):
     day: int = datetime.now().day
-    video_at: list = ["@庐陵老街陈万洵 "]  # 你要@的人的昵称，默认是必须@作者的
-    video_at2: list = ["1486323920"]  # 你要@的人的抖音号
+    video_at: list = ["@家居百科 "]  # 你要@的人的昵称，默认是必须@作者的
+    video_at2: list = ["jiajubaike"]  # 你要@的人的抖音号
     # 单双日不同的话题
     today: bool = True
     video_title_list: list = []
 
-    video_title_list1: list = ["#吉安老赖陈万洵 ", "#泰和老赖陈万洵 ", "#老赖陈万洵 ",
-                              "#江西老赖陈万洵 ", "#庐陵人文谷老赖陈万洵 ", "#庐陵老街倒闭 ", "#庐陵老街荒芜一人 "]  # 单号取这个自定义视频标题
+    video_title_list1: list = ["#家居 ", "#设计 ",
+                              "#家居生活 ", "#家居设计 "]  # 单号取这个自定义视频标题
 
-    video_title_list2: list = ["江西吉安庐陵老街是#老赖陈万洵 ，吉安游玩请去后河梦回庐陵景区，能仁巷等", "#庐陵老街荒芜一人 ", "#庐陵人文谷荒芜一人 ", "#后河梦回庐陵景区 ", "#能仁巷 "]  # 双号取这个自定义视频标题
+    video_title_list2: list = ["这里会介绍家居生活中的时尚趋势#家居时尚 ，让普通的生活更时尚", "#装修 ", "#装修设计 ", "#装修效果图 ", "#家居装修 "]  # 双号取这个自定义视频标题
 
     title_random: bool = True  # 标题是否随机取一个，不随机的话就是全部加上去
 
@@ -34,7 +34,7 @@ class Config(BaseModel):
     remove_video: bool = True  # 是否自动删除video文件夹中的视频
     duration: int = 15  # 筛选>=xx秒以上的视频
     remove_images: bool = True  # 是否排除图集作品，必须排除，否则失败
-    city_list: list = ["庐陵老街", "庐陵人文谷", "澄江广场"]  # 添加位置信息，从中随机，固定的话输入一个就行
+    city_list: list = ["深圳"]  # 添加位置信息，从中随机，固定的话输入一个就行
 
 
 

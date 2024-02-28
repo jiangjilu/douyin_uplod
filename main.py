@@ -627,9 +627,9 @@ def run():
 
 
 if __name__ == '__main__':
-    # run()
+    run()
 
-    print("调度任务开始运行")
-    scheduler = BlockingScheduler(timezone='Asia/Shanghai')
-    scheduler.add_job(run, 'interval', minutes=55, misfire_grace_time=900)
-    scheduler.start()
+    # print("调度任务开始运行")
+    # scheduler = BlockingScheduler(timezone='Asia/Shanghai')
+    # scheduler.add_job(run, 'interval', minutes=55, misfire_grace_time=900)
+    # scheduler.start()
