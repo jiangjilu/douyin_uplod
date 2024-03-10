@@ -34,7 +34,7 @@ class Config(BaseModel):
     remove_video: bool = True  # 是否自动删除video文件夹中的视频
     duration: int = 15  # 筛选>=xx秒以上的视频
     remove_images: bool = True  # 是否排除图集作品，必须排除，否则失败
-    city_list: list = ["深圳"]  # 添加位置信息，从中随机，固定的话输入一个就行
+    city_list: list = ["深圳市"]  # 添加位置信息，从中随机，固定的话输入一个就行
 
 
 
