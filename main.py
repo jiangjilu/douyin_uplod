@@ -1,3 +1,4 @@
+
 import asyncio
 import hashlib
 import logging
@@ -10,11 +11,11 @@ import pandas as pd
 import requests
 from PIL import Image
 from apscheduler.schedulers.blocking import BlockingScheduler
-from ffmpy import FFmpeg
+# from ffmpy import FFmpeg
 from moviepy.editor import *
 from playwright.async_api import Playwright, async_playwright
 
-import config
+from tqdm import tqdm
 from config import conigs
 from logs import config_log
 from datetime import datetime
@@ -59,31 +60,33 @@ def merge_images_video(image_folder, output_file, video_path, fps=None):
     index = len(image_list)
 
     # 获取第一张图片的大小作为视频分辨率
-    first_img = Image.open(image_folder + image_list[0])
+    first_img = Image.open(os.path.join(image_folder, image_list[0]))
     if fps is None:
         fps = 30
     try:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4格式
         videowrite = cv2.VideoWriter(output_file, fourcc, fps, first_img.size)
         img_array = []
-        for filename in [r'./frames/{0}.jpg'.format(i) for i in range(90, index + 90)]:
+        for filename in [f'./frames/{i}.jpg' for i in range(90, index + 90)]:
             img = cv2.imread(filename)
             if img is None:
                 print("is error!")
                 continue
             img_array.append(img)
         # 合成视频
-        for i in range(1, len(img_array)):
-            img_array[i] = cv2.resize(img_array[i], first_img.size)
-            videowrite.write(img_array[i])
-            print('第{}张图片合成成功'.format(i))
+        with tqdm(total=len(img_array), desc="图片合成进度") as pbar:
+            for i in range(len(img_array)):
+                img_array[i] = cv2.resize(img_array[i], first_img.size)
+                videowrite.write(img_array[i])
+                pbar.update(1)
+                # print('第{}张图片合成成功'.format(i))
         # 关闭视频流
         videowrite.release()
 
         print('开始添加背景音乐！')
         # 从某个视频中提取一段背景音乐
-        audio_sample_rate = 48000
-        audio_file = AudioFileClip(video_path, fps=audio_sample_rate)
+        fps = 48000
+        audio_file = AudioFileClip(video_path, fps=fps)
         # 将背景音乐写入.mp3文件
         output_dir = "music/"
         if not os.path.exists(output_dir):
@@ -91,8 +94,8 @@ def merge_images_video(image_folder, output_file, video_path, fps=None):
         else:
             delete_all_files(output_dir)
         audio = CompositeAudioClip([audio_file])
-        audio.write_audiofile(output_dir + '/background.mp3', fps=audio_sample_rate)
-        dd_path = output_file[:-5] + '3.mp4'
+        audio.write_audiofile(os.path.join(output_dir, "background.mp3"), fps=fps)
+        dd_path = output_file[:-5] + "3.mp4"
         # 2种方案
         # 方案一 使用moviepy，内存更小
         clip = VideoFileClip(output_file)
@@ -110,8 +113,8 @@ def merge_images_video(image_folder, output_file, video_path, fps=None):
         print('背景音乐添加完成！')
 
     except Exception as e:
-        print("发生错误：", str(e))
-        logging.info(str(e))
+        print("发生错误：", e)
+        logging.info(e)
 
 
 def set_video_frame(video_path):
@@ -142,20 +145,20 @@ def set_video_frame(video_path):
     video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     # 按照指定的间隔提取并保存帧图像
-    for i in range(start_frame, end_frame + 1):
-        ret, frame = video.read()
-        if not ret:
-            break
-        output_file = f'{output_dir}{i + 1}.jpg'
-        cv2.imwrite(output_file, frame)
+    with tqdm(total=(end_frame - start_frame), desc="视频抽帧进度") as pbar:
+        for i in range(start_frame + 1, end_frame + 1):
+            ret, frame = video.read()
+            if not ret:
+                break
+            output_file = os.path.join(output_dir, f"{i}.jpg")
+            cv2.imwrite(output_file, frame)
+            pbar.update(1)
+            # print(f"已处理 {i + 1}/{end_frame + 1} 帧")
 
-        print(f"已处理 {i + 1}/{end_frame + 1} 帧")
-
-    print("所有帧都已成功抽取！")
+    # print("所有帧都已成功抽取！")
     # 关闭视频流
     video.release()
-
-    merge_images_video(os.path.abspath("") + "\\frames\\", video_path[:-4] + "2.mp4", video_path, fps)
+    merge_images_video(os.path.join(os.path.abspath(""), "frames"), video_path[:-4] + "2.mp4", video_path, fps)
 
 
 class douyin(object):
@@ -176,10 +179,9 @@ class douyin(object):
         }
         if not os.path.exists(conigs.video_path):
             os.makedirs(conigs.video_path)
-
         if conigs.remove_video:
             delete_all_files(conigs.video_path)
-            delete_all_files(self.path + "\\frames")
+            delete_all_files(os.path.join(self.path, "frames"))
 
     def get_web_cookie(self):
         """
@@ -245,6 +247,7 @@ class douyin(object):
 
         try:
             res = requests.get(url, headers={"User-Agent": self.ua["app"]}).json()
+            # print(res)
             x = random.randint(0, len(res["music_list"]) - 1)
             music_list = res["music_list"][x]
             self.title = f"—来自：音乐榜单的第{(x + 1)}个音乐《{music_list['music_info']['title']}》"
@@ -252,8 +255,8 @@ class douyin(object):
             print("music_id:", self.ids)
             code = self.get_filter()
             return code
-        except Exception:
-            logging.info("获取抖音Top50音乐榜单失败")
+        except Exception as e:
+            logging.info("获取抖音Top50音乐榜单失败", e)
             return 2
 
     def get_douyin_music_video(self, music_id=None):
@@ -327,7 +330,7 @@ class douyin(object):
             else:
                 return 200, res
         except Exception as e:
-            print("出现错误：", e)
+            # print("出现错误：", e)
             logging.info(e)
             return 1, "1"
 
@@ -338,13 +341,13 @@ class douyin(object):
         """
         while True:
             jd, res = self.get_douyin_music_video()
-            if type(jd) != type(101):
+            if not isinstance(jd, int):
                 dd = jd.sample()
                 # print(dd.index.values)
                 index = dd.index.values[0]
                 video_list = res['aweme_list'][index]
                 aweme_id = res['aweme_list'][index]['aweme_id']
-                with open(self.path + "\\video_id_list.txt", encoding="utf-8", mode="r") as f:
+                with open(os.path.join(self.path, "video_id_list.txt"), encoding="utf-8", mode="r") as f:
                     self.video_ids = f.read().split(",")
                 if aweme_id not in self.video_ids:
                     self.video_ids.append(aweme_id)
@@ -375,23 +378,22 @@ class douyin(object):
         day = datetime.now().day
         if conigs.today:
             # video_title_list = video_title_list2 if day % 2 == 0 else video_title_list1
-            if day % 2 != 0:
+            if day % 2 == 0:
                 conigs.title_random = False
-                conigs.video_title_list = conigs.video_title_list2
+                video_title_list = conigs.video_title_list2
             else:
-                conigs.video_title_list = conigs.video_title_list1
+                video_title_list = conigs.video_title_list1
         else:
-            conigs.video_title_list = conigs.video_title_list1
+            video_title_list = conigs.video_title_list1
 
         if not conigs.title_random:
-            if len(conigs.video_title_list) > 5:
+            if len(video_title_list) > 5:
                 print("错误，话题数不能大于5")
-
-        desc = random.choice(conigs.video_title_list) if conigs.title_random else ''.join(
-            conigs.video_title_list)
+        desc = random.choice(video_title_list) if conigs.title_random else ''.join(
+            video_title_list)
         desc += ''.join(conigs.video_at) + self.title
         reb = requests.get(uri, headers={"User-Agent": self.ua["web"]}).content
-        self.video_path = conigs.video_path + desc + ".mp4"
+        self.video_path = os.path.join(conigs.video_path, desc + ".mp4")
         with open(self.video_path, mode="wb") as f:
             f.write(reb)
             print("处理前md5：", get_file_md5(self.video_path))
@@ -400,12 +402,11 @@ class douyin(object):
             # clip.subclip(10, 20)  # 剪切
             set_video_frame(self.video_path)
             # self.video_path这个文件名不能改，上传就是上传这个
-            self.video_path = conigs.video_path + desc + "3.mp4"
+            self.video_path = os.path.join(conigs.video_path, desc + "3.mp4")
             # clip.write_videofile(self.video_path)  # 保存视频
             print("处理后md5：", get_file_md5(self.video_path))
             print("视频处理完毕")
-
-            with open(self.path + "\\video_id_list.txt", encoding="utf-8", mode="w") as f:
+            with open(os.path.join(self.path, "video_id_list.txt"), encoding="utf-8", mode="w") as f:
                 f.write(",".join(self.video_ids))
         return 0
 
@@ -436,172 +437,192 @@ class upload_douyin(douyin):
             await page.locator(".login").click(timeout=1500)
             print("未登录，正在跳出")
             logging.info("未登录，正在跳出")
-            is_login = False
         except Exception as e:
             # print("出现此error，代表cookie正常反之异常\n", e)
-            is_login = True
             print("账号已登录")
-        if is_login:
             try:
-                await page.goto("https://creator.douyin.com/creator-micro/content/upload")
-            except Exception as e:
-                print("发布视频失败，cookie已失效，请登录后再试\n", e)
-                logging.info("发布视频失败，cookie已失效，请登录后再试")
+                msg = ["视频下载成功，等待发布", "视频下载失败", "音乐榜单获取失败"]
+                # 等待视频处理完毕
+                code = self.get_douyin_music()
+                logging.info(msg[code])
+                if code == 0:
+                    video_desc_list = self.video_path.split("\\")
+                    video_desc = str(video_desc_list[len(video_desc_list) - 1])[:-4]
+                    video_desc_tag = []
+                    tag_rs = re.findall(r"(#.*?) ", video_desc)
+                    if len(tag_rs) > 0:
+                        video_desc_tag = video_desc.split(" ")
+                        print("该视频有话题")
+                    else:
+                        video_desc_tag.append(video_desc)
+                        print("该视频没有检测到话题")
 
-            video_desc_list = self.video_path.split("\\")
-            video_desc = str(video_desc_list[len(video_desc_list) - 1])[:-4]
-
-            video_desc_tag = []
-            tag_rs = re.findall(r"(#.*?) ", video_desc)
-            if len(tag_rs) > 0:
-                video_desc_tag = video_desc.split(" ")
-                print("该视频有话题")
-            else:
-                video_desc_tag.append(video_desc)
-                print("该视频没有检测到话题")
-
-            try:
-                async with page.expect_file_chooser() as fc_info:
-                    await page.locator(
-                        "label:has-text(\"点击上传 或直接将视频文件拖入此区域为了更好的观看体验和平台安全，平台将对上传的视频预审。超过40秒的视频建议上传横版视频\")").click()
-                file_chooser = await fc_info.value
-                await file_chooser.set_files(self.video_path, timeout=self.timeout)
-            except Exception as e:
-                print("发布视频失败，可能网页加载失败了\n", e)
-                logging.info("发布视频失败，可能网页加载失败了")
-            # await page.locator("label:has-text(\"点击上传 或直接将视频文件拖入此区域为了更好的观看体验和平台安全，平台将对上传的视频预审。超过40秒的视频建议上传横版视频\")").set_input_files("下载.mp4", timeout=self.timeout)
-            try:
-                await page.locator(".modal-button--38CAD").click()
-            except Exception as e:
-                print(e)
-            await page.wait_for_url("https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page")
-            # css视频标题选择器
-
-            css_selector = ".zone-container"
-            await page.locator(".ace-line > div").click()
-            tag_index = 0
-            at_index = 0
-            # 处理末尾标题
-            video_desc_end = len(video_desc_tag) - 1
-            video_desc_tag[video_desc_end] = video_desc_tag[video_desc_end][:-1]
-            for tag in video_desc_tag:
-                await page.type(css_selector, tag)
-                if "@" in tag:
-                    at_index += 1
-                    print("正在添加第%s个想@的人" % at_index)
-                    time.sleep(3)
                     try:
-                        if len(conigs.video_at2) >= at_index:
-                            await page.get_by_text("抖音号 " + conigs.video_at2[at_index - 1]).click(timeout=5000)
-                        else:
-                            tag_at = re.search(r"@(.*?) ", tag + " ").group(1)
-                            print("想@的人", tag_at)
-                            await page.get_by_text(tag_at, exact=True).first.click(timeout=5000)
+                        async with page.expect_file_chooser() as fc_info:
+                            await page.locator(
+                                "label:has-text(\"点击上传 或直接将视频文件拖入此区域为了更好的观看体验和平台安全，平台将对上传的视频预审。超过40秒的视频建议上传横版视频\")").click()
+                        file_chooser = await fc_info.value
+                        await file_chooser.set_files(self.video_path, timeout=self.timeout)
                     except Exception as e:
-                        print(tag + "失败了，可能被对方拉黑了")
-                        logging.info(tag + "失败了，可能被对方拉黑了")
+                        print("发布视频失败，可能网页加载失败了\n", e)
+                        logging.info("发布视频失败，可能网页加载失败了")
 
-                else:
-                    tag_index += 1
-                    await page.press(css_selector, "Space")
-                    print("正在添加第%s个话题" % tag_index)
-            print("视频标题输入完毕，等待发布")
-            time.sleep(2)
-            # 添加位置信息，只能添加当地
-            try:
-                city = random.choice(conigs.city_list)
-                await page.get_by_text("输入地理位置").click()
-                time.sleep(3)
-                await page.get_by_role("textbox").nth(1).fill(city)
-                await page.locator(".detail-v2--3LlIL").first.click()
-                print("位置添加成功")
-            except Exception as e:
-                print("位置添加失败")
-                logging.info("位置添加失败")
+                    try:
+                        await page.locator(".modal-button--38CAD").click()
+                    except Exception as e:
+                        print(e)
+                    await page.wait_for_url(
+                        "https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page")
+                    # css视频标题选择器
 
-            # try:
-            #     await page.locator('button.button--1SZwR:nth-child(1)').click()
-            # except Exception as e:
-            #     print(e)
-            # # 获取点击按钮消息
-            # msg = await page.locator('//*[@class="semi-toast-content-text"]').all_text_contents()
-            # for msg_txt in msg:
-            #     print("来自网页的实时消息：" + msg_txt)
+                    css_selector = ".zone-container"
+                    await page.locator(".ace-line > div").click()
+                    tag_index = 0
+                    at_index = 0
+                    # 处理末尾标题
+                    video_desc_end = len(video_desc_tag) - 1
+                    video_desc_tag[video_desc_end] = video_desc_tag[video_desc_end][:-1]
+                    for tag in video_desc_tag:
+                        await page.type(css_selector, tag)
+                        if "@" in tag:
+                            at_index += 1
+                            print("正在添加第%s个想@的人" % at_index)
+                            time.sleep(3)
+                            try:
+                                if len(conigs.video_at2) >= at_index:
+                                    await page.get_by_text("抖音号 " + conigs.video_at2[at_index - 1]).click(
+                                        timeout=5000)
+                                else:
+                                    tag_at = re.search(r"@(.*?) ", tag + " ").group(1)
+                                    print("想@的人", tag_at)
+                                    await page.get_by_text(tag_at, exact=True).first.click(timeout=5000)
+                            except Exception as e:
+                                print(tag + "失败了，可能被对方拉黑了")
+                                logging.info(tag + "失败了，可能被对方拉黑了")
 
-            # 跳转成功页面
-            # try:
-            #     await page.wait_for_url("https://creator.douyin.com/creator-micro/content/manage")
-            #     print("账号发布视频成功")
-            #     with open(self.path + "\\video_id_list.txt", encoding="utf-8", mode="w") as f:
-            #         f.write(",".join(self.video_ids))
-            #     logging.info("账号发布视频成功")
-            # except Exception as e:
-            is_while = False
-            while True:
-                # 循环获取点击按钮消息
-                time.sleep(2)
-                try:
-                    await page.locator('button.button--1SZwR:nth-child(1)').click()
-                except Exception as e:
-                    print(e)
-                    break
-                msg = await page.locator('//*[@class="semi-toast-content-text"]').all_text_contents()
-                for msg_txt in msg:
-                    print("来自网页的实时消息：" + msg_txt)
-                    if msg_txt.find("发布成功") != -1:
-                        is_while = True
-                        logging.info("账号发布视频成功")
-                        print("账号发布视频成功")
-                    elif msg_txt.find("上传成功") != -1:
+                        else:
+                            tag_index += 1
+                            await page.press(css_selector, "Space")
+                            print("正在添加第%s个话题" % tag_index)
+                    print("视频标题输入完毕，等待发布")
+
+                    # 添加位置信息，只能添加当地
+                    if conigs.city:
+                        time.sleep(2)
                         try:
-                            await page.locator('button.button--1SZwR:nth-child(1)').click()
+                            city = random.choice(conigs.city_list)
+                            await page.get_by_text("输入地理位置").click()
+                            time.sleep(3)
+                            await page.get_by_role("textbox").nth(1).fill(city)
+                            await page.locator(".detail-v2--3LlIL").first.click()
+                            print("位置添加成功")
+                        except Exception as e:
+                            logging.info("位置添加失败", e)
+
+                    # 添加声明
+                    if conigs.declaration:
+                        declaration_int = conigs.declaration_int
+                        if declaration_int > 6:
+                            raise Exception("失败，添加声明序号超出指定范围")
+                        declaration_content: str = (lambda content, index: content[index])(conigs.declaration_list,
+                                                                                           declaration_int - 1)
+                        print(declaration_content)
+                        await page.locator("p.contentTitle--1Oe95:nth-child(2)").click()
+                        await page.get_by_role("radio", name=declaration_content, exact=True).click()
+                        if declaration_int == 1:
+                            if len(conigs.declaration_value) < 2:
+                                raise Exception("请设置拍摄地和拍摄日期")
+                            await page.get_by_text("选择拍摄地点").click()
+                            i1 = 0
+                            value_list = (conigs.declaration_value[0]).split("-")
+                            for i in value_list:
+                                if i1 + 1 == len(value_list):
+                                    await page.locator("li").filter(has_text=i).click()
+                                else:
+                                    await page.locator("li").filter(has_text=i).locator("svg").click()
+                                i1 += 1
+                            time.sleep(2)
+                            await page.get_by_placeholder("设置拍摄日期").click()
+                            declaration_value = conigs.declaration_value[1]
+                            if declaration_value is None:
+                                declaration_value = datetime.today().strftime("-%m-%d")
+                            await page.get_by_title(declaration_value).locator("div").click()
+                        elif declaration_int == 2:
+                            await page.get_by_role("radio", name="取材站外", exact=True).click()
+                        await page.get_by_role("button", name="确定", exact=True).click()
+
+                    is_while = False
+                    while True:
+                        # 循环获取点击按钮消息
+                        time.sleep(2)
+                        try:
+                            await page.get_by_role("button", name="发布", exact=True).click()
+                            try:
+                                await page.wait_for_url("https://creator.douyin.com/creator-micro/content/manage")
+                                logging.info("账号发布视频成功")
+                                break
+                            except Exception as e:
+                                print(e)
                         except Exception as e:
                             print(e)
                             break
-                        msg2 = await page.locator(
-                            '//*[@class="semi-toast-content-text"]').all_text_contents()
-                        for msg2_txt in msg2:
-                            if msg2_txt.find("发布成功") != -1:
+                        msg = await page.locator('//*[@class="semi-toast-content-text"]').all_text_contents()
+                        for msg_txt in msg:
+                            print("来自网页的实时消息：" + msg_txt)
+                            if msg_txt.find("发布成功") != -1:
                                 is_while = True
                                 logging.info("账号发布视频成功")
                                 print("账号发布视频成功")
-                            elif msg2_txt.find("已封禁") != -1:
+                            elif msg_txt.find("上传成功") != -1:
+                                try:
+                                    await page.locator('button.button--1SZwR:nth-child(1)').click()
+                                except Exception as e:
+                                    print(e)
+                                    break
+                                msg2 = await page.locator(
+                                    '//*[@class="semi-toast-content-text"]').all_text_contents()
+                                for msg2_txt in msg2:
+                                    if msg2_txt.find("发布成功") != -1:
+                                        is_while = True
+                                        logging.info("账号发布视频成功")
+                                        print("账号发布视频成功")
+                                    elif msg2_txt.find("已封禁") != -1:
+                                        is_while = True
+                                        logging.info("账号视频发布功能已被封禁")
+                                        print("账号视频发布功能已被封禁")
+                            elif msg_txt.find("已封禁") != -1:
                                 is_while = True
-                                logging.info("账号视频发布功能已被封禁")
-                                print("账号视频发布功能已被封禁")
-                    elif msg_txt.find("已封禁") != -1:
-                        is_while = True
-                        print("视频发布功能已被封禁")
-                        logging.info("视频发布功能已被封禁")
-                    else:
-                        pass
+                                print("视频发布功能已被封禁")
+                                logging.info("视频发布功能已被封禁")
+                            else:
+                                pass
 
-                    if is_while:
-                        break
-        # await context.storage_state(path=self.path + "\\cookie.json")
+                            if is_while:
+                                break
+                else:
+                    delete_all_files(os.path.join(self.path, "frames"))
+                    delete_all_files(os.path.join(self.path, "video"))
+
+            except Exception as e:
+                print("发布视频失败，cookie已失效，请登录后再试\n", e)
+                logging.info("发布视频失败，cookie已失效，请登录后再试")
+        # await context.storage_state()
         await context.close()
         await browser.close()
 
     async def main(self):
-        msg = ["视频下载成功，等待发布", "视频下载失败", "音乐榜单获取失败"]
         async with async_playwright() as playwright:
-            code = self.get_douyin_music()
-            logging.info(msg[code])
-            if code == 0:
-                await self.upload(playwright)
-            else:
-                delete_all_files(self.path + "\\frames")
-                delete_all_files(self.path + "\\video")
+            await self.upload(playwright)
 
 
-def find_file(find_path, file_type):
+def find_file(find_path, file_type) -> list:
     """
     寻找文件
     :param find_path: 子路径
     :param file_type: 文件类型
     :return:
     """
-    path = os.path.abspath('') + "\\" + find_path
+    path = os.path.join(os.path.abspath(""), find_path)
     if not os.path.exists(path):
         os.makedirs(path)
     data_list = []
@@ -621,15 +642,14 @@ def run():
     for cookie_path in cookie_list:
         x += 1
         cookie_name: str = os.path.basename(cookie_path)
-        print("正在使用[%s]发送作品，当前账号排序[%s]" % (cookie_name.split("_")[1][:-5], str(x)))
+        print("正在使用[%s]发布作品，当前账号排序[%s]" % (cookie_name.split("_")[1][:-5], str(x)))
         app = upload_douyin(60, cookie_path)
         asyncio.run(app.main())
 
 
 if __name__ == '__main__':
     run()
-
-    # print("调度任务开始运行")
+    # print("任务开始运行")
     # scheduler = BlockingScheduler(timezone='Asia/Shanghai')
-    # scheduler.add_job(run, 'interval', minutes=55, misfire_grace_time=900)
+    # scheduler.add_job(run, 'interval', minutes=60, misfire_grace_time=900)
     # scheduler.start()
